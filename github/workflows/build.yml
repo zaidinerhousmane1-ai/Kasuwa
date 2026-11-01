@@ -1,0 +1,53 @@
+: Build Kasuwa APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recuperer le depot
+        uses: actions/checkout@v4
+
+      - name: Installer Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Installer Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Accepter les licences Android
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Decompresser le projet
+        run: unzip -q kasuwa.zip -d project
+
+      - name: Creer la cle de debug manquante
+        working-directory: project
+        run: >
+          keytool -genkeypair -keystore debug.keystore
+          -storepass android -keypass android
+          -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000
+          -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Compiler l'APK
+        working-directory: project
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Publier l'APK dans les Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "v${{ github.run_number }}"
+          project/app/build/outputs/apk/debug/app-debug.apk
+          --title "Kasuwa build ${{ github.run_number }}"
+          --notes "APK de test à installer sur Android"
